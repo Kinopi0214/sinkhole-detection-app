@@ -40,3 +40,47 @@ a {
     color-scheme: dark;
   }
 }
+
+/* Excel風テーブル */
+.excel-wrap {
+  overflow-x: auto;
+  border: 1px solid #cfcfcf;
+  border-radius: 8px;
+}
+
+.excel-table {
+  width: 100%;
+  border-collapse: collapse; /* 罫線を1本に */
+  font-size: 14px;
+}
+
+.excel-table th,
+.excel-table td {
+  border: 1px solid #cfcfcf; /* 縦横の格子 */
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.excel-table thead th {
+  background: #f5f5f5;
+  font-weight: 700;
+}
+
+/* 判定別の行カラー */
+.row-safe {
+  background-color: #e8f1ff; /* 薄い青 */
+}
+
+.row-warn {
+  background-color: #fff4cc; /* 薄い黄色 */
+}
+
+.row-danger {
+  background-color: #ffe0e0; /* 薄い赤 */
+}
+
+/* ホバー時（任意・ExcelっぽさUP） */
+.excel-table tbody tr:hover {
+  filter: brightness(0.97);
+}
