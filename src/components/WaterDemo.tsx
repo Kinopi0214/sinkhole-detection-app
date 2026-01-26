@@ -52,9 +52,12 @@ export default function WaterDemo() {
     return [{ ...first, diff, risk }];
   });
 
-  // ✅ 追加：総水分量（累積量）と、前回更新時刻
+  // ✅ 総水分量（累積）表示用：上流/下流/差分
   const [totalUpL, setTotalUpL] = useState(0);
   const [totalDownL, setTotalDownL] = useState(0);
+  const [totalDiffL, setTotalDiffL] = useState(0);
+
+  // 前回の時刻（ts）を保持
   const lastTsRef = useRef<number | null>(null);
 
   const appendOne = () => {
@@ -62,20 +65,26 @@ export default function WaterDemo() {
     const diff = calcDiff(r);
     const risk = judgeRisk(diff, warnDiff, dangerDiff);
 
-    // ✅ 追加：経過時間を測って累積する
-    const nowTs = Date.now();
+    // ✅ 累積更新（dtは r.ts を使う）
     const lastTs = lastTsRef.current;
 
     if (lastTs === null) {
-      // 初回は積分できないので時刻だけ保存
-      lastTsRef.current = nowTs;
+      // 初回は時刻だけ保存（dtが取れない）
+      lastTsRef.current = r.ts;
     } else {
-      const dtSec = (nowTs - lastTs) / 1000; // 経過秒
-      lastTsRef.current = nowTs;
+      const dtSec = (r.ts - lastTs) / 1000;
+      lastTsRef.current = r.ts;
 
-      // 総水分量（L） = 流量（L/min） × 経過時間（min）
-      setTotalUpL((prev) => prev + r.upstream * (dtSec / 60));
-      setTotalDownL((prev) => prev + r.downstream * (dtSec / 60));
+      if (dtSec > 0 && dtSec < 60 * 60) {
+        const dtMin = dtSec / 60;
+
+        // 上流・下流の総量
+        setTotalUpL((prev) => prev + r.upstream * dtMin);
+        setTotalDownL((prev) => prev + r.downstream * dtMin);
+
+        // 差分の総量（ここが表にも出す対象）
+        setTotalDiffL((prev) => prev + (r.upstream - r.downstream) * dtMin);
+      }
     }
 
     setRows((prev) => {
@@ -99,8 +108,26 @@ export default function WaterDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, intervalMs]);
 
-  // ✅ 表示用：総水分量の差（上流−下流）
-  const totalDiffL = totalUpL - totalDownL;
+  // ✅ 表に出すため：各行時点の「差分総量（累積差）」を rows から計算して付与
+  // こうすると「表示の行」と「累積値」が必ず一致します（重要）
+  const rowsWithTotalDiff = useMemo(() => {
+    if (rows.length === 0) return [];
+
+    let acc = 0; // 累積差（L）
+
+    return rows.map((cur, i) => {
+      const prev = rows[i - 1];
+      if (prev) {
+        const dtSec = (cur.ts - prev.ts) / 1000;
+        if (dtSec > 0 && dtSec < 60 * 60) {
+          const dtMin = dtSec / 60;
+          // 差分総量（累積差）
+          acc += (cur.upstream - cur.downstream) * dtMin;
+        }
+      }
+      return { ...cur, totalDiffL: acc };
+    });
+  }, [rows]);
 
   return (
     <div className="rounded-xl border p-4 space-y-4">
@@ -135,35 +162,40 @@ export default function WaterDemo() {
 
         <button
           className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50"
-          onClick={() => setRows(rows.slice(-1))}
+          onClick={() => setRows((prev) => prev.slice(-1))}
         >
           クリア（最新のみ）
         </button>
 
-        {/* ✅ 追加：総水分量リセット */}
+        {/* ✅ 総水分量リセット */}
         <button
           className="rounded-md border px-3 py-1 text-sm hover:bg-gray-50"
           onClick={() => {
             setTotalUpL(0);
             setTotalDownL(0);
-            lastTsRef.current = null;
+            setTotalDiffL(0);
+
+            // 次のappendOneでdtを取れるように「最新行のts」を前回時刻としてセット
+            setRows((prev) => {
+              const latest = prev.slice(-1);
+              lastTsRef.current = latest[0]?.ts ?? null;
+              return latest;
+            });
           }}
         >
           総水分量リセット
         </button>
       </div>
 
-      {/* ✅ 追加：総水分量表示（テーブルの前に出すと見やすい） */}
-      <div className="rounded-lg border p-3 bg-gray-50">
+      {/* ✅ 画面上部の総量表示（いまの表示を維持） */}
+      <div className="space-y-1">
         <div className="font-semibold">総水分量（累積）</div>
-        <div className="text-sm text-gray-700 mt-1">
-          <div>上流：{totalUpL.toFixed(2)} L</div>
-          <div>下流：{totalDownL.toFixed(2)} L</div>
-          <div>差分（上流−下流）：{totalDiffL.toFixed(2)} L</div>
-        </div>
+        <div>上流：{totalUpL.toFixed(2)} L</div>
+        <div>下流：{totalDownL.toFixed(2)} L</div>
+        <div>差分（上流−下流）：{totalDiffL.toFixed(2)} L</div>
       </div>
 
-      {/* ② 罫線ありのテーブル */}
+      {/* テーブル（差分の右に「差分総量」を1列だけ追加） */}
       <div className="excel-wrap">
         <table className="excel-table">
           <thead>
@@ -171,13 +203,17 @@ export default function WaterDemo() {
               <th>上流（L/min）</th>
               <th>下流（L/min）</th>
               <th>差分（上流-下流）</th>
+
+              {/* ✅ 追加：差分の総量（累積差） */}
+              <th>差分の総量（L）</th>
+
               <th>判定</th>
               <th>更新日時</th>
             </tr>
           </thead>
 
           <tbody>
-            {rows.map((r) => {
+            {rowsWithTotalDiff.map((r) => {
               const rowClass =
                 r.risk === "danger"
                   ? "row-danger"
@@ -190,6 +226,10 @@ export default function WaterDemo() {
                   <td>{r.upstream.toFixed(2)}</td>
                   <td>{r.downstream.toFixed(2)}</td>
                   <td>{r.diff.toFixed(2)}</td>
+
+                  {/* ✅ 追加列：差分総量 */}
+                  <td>{r.totalDiffL.toFixed(2)}</td>
+
                   <td>{riskLabel(r.risk)}</td>
                   <td>{new Date(r.ts).toLocaleString("ja-JP")}</td>
                 </tr>
