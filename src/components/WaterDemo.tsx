@@ -187,14 +187,6 @@ export default function WaterDemo() {
         </button>
       </div>
 
-      {/* ✅ 画面上部の総量表示（いまの表示を維持） */}
-      <div className="space-y-1">
-        <div className="font-semibold">総水分量（累積）</div>
-        <div>上流：{totalUpL.toFixed(2)} L</div>
-        <div>下流：{totalDownL.toFixed(2)} L</div>
-        <div>差分（上流−下流）：{totalDiffL.toFixed(2)} L</div>
-      </div>
-
       {/* テーブル（差分の右に「差分総量」を1列だけ追加） */}
       <div className="excel-wrap">
         <table className="excel-table">
@@ -202,7 +194,7 @@ export default function WaterDemo() {
             <tr>
               <th>上流（L/min）</th>
               <th>下流（L/min）</th>
-              <th>差分（上流-下流）</th>
+              <th>差分（L/min）</th>
 
               {/* ✅ 追加：差分の総量（累積差） */}
               <th>差分の総量（L）</th>
