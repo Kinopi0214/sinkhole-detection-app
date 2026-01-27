@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import styles from "./WaterDemo.module.css";
+
 import { MockWaterProvider } from "@/lib/providers/mockWaterProvider";
 import { calcDiff, judgeRisk, type RiskLevel, type WaterReading } from "@/lib/water";
 
@@ -10,7 +12,7 @@ type Row = WaterReading & {
 };
 
 type RowWithTotal = Row & {
-  totalDiffLmin: number; // ✅ 差分（L/min）を単純累積した値
+  totalDiffLmin: number; // 差分(L/min)を単純加算した累積
 };
 
 function numEnv(key: string, fallback: number) {
@@ -23,20 +25,8 @@ function riskLabel(risk: RiskLevel) {
   return risk === "danger" ? "危険" : risk === "warn" ? "注意" : "正常";
 }
 
-function riskBadgeClass(risk: RiskLevel) {
-  return risk === "danger"
-    ? "bg-red-100 text-red-800 border-red-200"
-    : risk === "warn"
-    ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-    : "bg-blue-100 text-blue-800 border-blue-200";
-}
-
-function riskCardBorderClass(risk: RiskLevel) {
-  return risk === "danger"
-    ? "border-red-200"
-    : risk === "warn"
-    ? "border-yellow-200"
-    : "border-blue-200";
+function riskTone(risk: RiskLevel) {
+  return risk === "danger" ? "danger" : risk === "warn" ? "warn" : "safe";
 }
 
 export default function WaterDemo() {
@@ -56,7 +46,7 @@ export default function WaterDemo() {
 
   const timerRef = useRef<number | null>(null);
 
-  // 右上の現在時刻
+  // 現在時刻（右上表示）
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -98,7 +88,7 @@ export default function WaterDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, intervalMs]);
 
-  // ✅ 差分（L/min）を「単純に加算」していく累積値を各行に付与
+  // 差分(L/min)を単純累積
   const rowsWithTotalDiff: RowWithTotal[] = useMemo(() => {
     let acc = 0;
     return rows.map((cur) => {
@@ -107,105 +97,78 @@ export default function WaterDemo() {
     });
   }, [rows]);
 
-  // ✅ 現在値カード用（最新行）
   const latest = rowsWithTotalDiff.length
     ? rowsWithTotalDiff[rowsWithTotalDiff.length - 1]
     : null;
 
+  const latestTone = latest ? riskTone(latest.risk) : "neutral";
+
   return (
-    <div className="space-y-4">
-      {/* ヘッダー */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm space-y-3">
-        <div className="flex items-start justify-between gap-3">
+    <div className={styles.page}>
+      {/* 上部：カード領域 */}
+      <div className={styles.panel}>
+        <div className={styles.header}>
           <div>
-            <h2 className="text-lg font-semibold">疑似リアルタイム水量デモ（履歴）</h2>
-            <div className="text-sm text-gray-600">
+            <div className={styles.title}>疑似リアルタイム水量デモ（履歴）</div>
+            <div className={styles.sub}>
               更新間隔: {intervalMs}ms ／ 閾値: 注意 ≥ {warnDiff} ／ 危険 ≥ {dangerDiff}
             </div>
           </div>
-          <div className="text-sm text-gray-700">現在時刻：{new Date(now).toLocaleString("ja-JP")}</div>
+          <div className={styles.now}>現在時刻：{new Date(now).toLocaleString("ja-JP")}</div>
         </div>
 
-        {/* ✅ 現在値カード */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <div className="text-xs text-gray-500">上流（L/min）</div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {latest ? latest.upstream.toFixed(2) : "--"}
-            </div>
+        <div className={styles.kpiGrid}>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>上流（L/min）</div>
+            <div className={styles.kpiValue}>{latest ? latest.upstream.toFixed(2) : "--"}</div>
           </div>
 
-          <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <div className="text-xs text-gray-500">下流（L/min）</div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {latest ? latest.downstream.toFixed(2) : "--"}
-            </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>下流（L/min）</div>
+            <div className={styles.kpiValue}>{latest ? latest.downstream.toFixed(2) : "--"}</div>
           </div>
 
-          <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <div className="text-xs text-gray-500">差分（L/min）</div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {latest ? latest.diff.toFixed(2) : "--"}
-            </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>差分（L/min）</div>
+            <div className={styles.kpiValue}>{latest ? latest.diff.toFixed(2) : "--"}</div>
           </div>
 
-          <div className="rounded-xl border bg-white p-3 shadow-sm">
-            <div className="text-xs text-gray-500">差分の総量（L/min）</div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {latest ? latest.totalDiffLmin.toFixed(2) : "--"}
-            </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>差分の総量（L/min）</div>
+            <div className={styles.kpiValue}>{latest ? latest.totalDiffLmin.toFixed(2) : "--"}</div>
           </div>
 
-          <div
-            className={[
-              "rounded-xl border bg-white p-3 shadow-sm",
-              latest ? riskCardBorderClass(latest.risk) : "",
-            ].join(" ")}
-          >
-            <div className="text-xs text-gray-500">判定</div>
-            <div className="mt-2 flex items-center gap-2">
-              <span
-                className={[
-                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
-                  latest ? riskBadgeClass(latest.risk) : "bg-gray-100 text-gray-700 border-gray-200",
-                ].join(" ")}
-              >
+          <div className={`${styles.kpiCard} ${styles[`kpiTone_${latestTone}`]}`}>
+            <div className={styles.kpiLabel}>判定</div>
+            <div className={styles.kpiRow}>
+              <span className={`${styles.badge} ${styles[`badge_${latestTone}`]}`}>
                 {latest ? riskLabel(latest.risk) : "--"}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className={styles.kpiTime}>
                 {latest ? new Date(latest.ts).toLocaleString("ja-JP") : ""}
               </span>
             </div>
           </div>
         </div>
 
-        {/* 操作ボタン */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            className="rounded-md border bg-white px-3 py-1 text-sm hover:bg-gray-50"
-            onClick={appendOne}
-          >
+        <div className={styles.controls}>
+          <button className={styles.btn} onClick={appendOne}>
             1回取得
           </button>
 
-          <button
-            className="rounded-md border bg-white px-3 py-1 text-sm hover:bg-gray-50"
-            onClick={() => setRunning((v) => !v)}
-          >
+          <button className={styles.btn} onClick={() => setRunning((v) => !v)}>
             {running ? "停止" : "再開"}
           </button>
 
-          <button
-            className="rounded-md border bg-white px-3 py-1 text-sm hover:bg-gray-50"
-            onClick={() => setRows((prev) => prev.slice(-1))}
-          >
+          <button className={styles.btn} onClick={() => setRows((prev) => prev.slice(-1))}>
             クリア（最新のみ）
           </button>
         </div>
       </div>
 
-      {/* 履歴テーブル */}
-      <div className="rounded-xl border bg-white p-4 shadow-sm">
+      {/* 下部：テーブル */}
+      <div className={styles.panel}>
+        {/* ここは既存のexcel CSSが効く前提（あなたのglobals.cssにあるはず） */}
         <div className="excel-wrap">
           <table className="excel-table">
             <thead>
@@ -224,24 +187,19 @@ export default function WaterDemo() {
                 const rowClass =
                   r.risk === "danger" ? "row-danger" : r.risk === "warn" ? "row-warn" : "row-safe";
 
+                const tone = riskTone(r.risk);
+
                 return (
                   <tr key={r.ts} className={rowClass}>
                     <td>{r.upstream.toFixed(2)}</td>
                     <td>{r.downstream.toFixed(2)}</td>
                     <td>{r.diff.toFixed(2)}</td>
                     <td>{r.totalDiffLmin.toFixed(2)}</td>
-
                     <td>
-                      <span
-                        className={[
-                          "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
-                          riskBadgeClass(r.risk),
-                        ].join(" ")}
-                      >
+                      <span className={`${styles.badge} ${styles[`badge_${tone}`]}`}>
                         {riskLabel(r.risk)}
                       </span>
                     </td>
-
                     <td>{new Date(r.ts).toLocaleString("ja-JP")}</td>
                   </tr>
                 );
