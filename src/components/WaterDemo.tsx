@@ -12,7 +12,7 @@ type Row = WaterReading & {
 };
 
 type RowWithTotal = Row & {
-  totalDiffL: number; // 差分総量（L）＝差分(L/min)を時間積分した累積
+  totalDiffL: number; // L
 };
 
 function numEnv(key: string, fallback: number) {
@@ -22,11 +22,8 @@ function numEnv(key: string, fallback: number) {
 }
 
 function formatInterval(intervalMs: number) {
-  // 10000ms -> 10s のように表示したい
-  // 端数が出る可能性もあるので、必要なら小数も許容
   const s = intervalMs / 1000;
-  const text = Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
-  return text;
+  return Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
 }
 
 function riskLabel(risk: RiskLevel) {
@@ -47,17 +44,26 @@ export default function WaterDemo() {
 
   const maxRows = 300;
 
-  // 1ステップ分の体積換算係数：diff(L/min) × (intervalMs/60000) = L
+  // 体積換算：diff(L/min) × (intervalMs/60000) = L
   const stepMinutes = intervalMs / 60000;
 
+  // ✅ 発表用シナリオ設定（ここを変えるだけで演出調整できます）
+  const demoEqualRows = 4;  // 最初の「差分0」行数（3にしたければ 3）
+  const demoRampRows = 10;  // 差分を増やすフェーズ行数
+  const demoRampStep = 0.9; // 1行ごとの下流低下量（L/min）
+
   const provider = useMemo(
-    () => new MockWaterProvider(upstreamBase, downstreamBase, jitter),
+    () =>
+      new MockWaterProvider(upstreamBase, downstreamBase, jitter, {
+        equalRows: demoEqualRows,
+        rampRows: demoRampRows,
+        rampStep: demoRampStep,
+      }),
     [upstreamBase, downstreamBase, jitter]
   );
 
   const timerRef = useRef<number | null>(null);
 
-  // 現在時刻（右上表示）
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -95,7 +101,6 @@ export default function WaterDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, intervalMs]);
 
-  // ✅ 差分総量（L）を計算：diff(L/min) を intervalMs 分だけ積分して累積
   const rowsWithTotalDiff: RowWithTotal[] = useMemo(() => {
     let accL = 0;
     return rows.map((cur) => {
@@ -114,13 +119,10 @@ export default function WaterDemo() {
 
   return (
     <div className={styles.page}>
-      {/* 上部：カード領域 */}
       <div className={styles.panel}>
         <div className={styles.header}>
           <div>
             <div className={styles.title}>疑似リアルタイム水量デモ（履歴）</div>
-
-            {/* ✅ 閾値の表示を削除し、ms→s表示 */}
             <div className={styles.sub}>更新間隔: {formatInterval(intervalMs)}</div>
           </div>
           <div className={styles.now}>現在時刻：{new Date(now).toLocaleString("ja-JP")}</div>
@@ -160,26 +162,18 @@ export default function WaterDemo() {
           </div>
         </div>
 
-        {/* ✅ ボタン：1回取得を削除、クリアを「0から開始」に */}
         <div className={styles.controls}>
           <button className={styles.btn} onClick={() => setRunning((v) => !v)}>
             {running ? "停止" : "再開"}
           </button>
 
-          <button
-            className={styles.btn}
-            onClick={() => {
-              setRows([]); // ✅ 0から
-            }}
-          >
+          <button className={styles.btn} onClick={() => setRows([])}>
             クリア
           </button>
         </div>
       </div>
 
-      {/* 下部：テーブル */}
       <div className={styles.panel}>
-        {/* ✅ 注釈を表の上部に移動 */}
         <div className={styles.tableNote}>{noteText}</div>
 
         <div className="excel-wrap">
@@ -221,9 +215,8 @@ export default function WaterDemo() {
           </table>
         </div>
 
-        {/* 0件のときの案内（見栄え用） */}
         {rowsWithTotalDiff.length === 0 && (
-          <div className={styles.emptyHint}>まだデータがありません。再開するとデータが流れます。</div>
+          <div className={styles.emptyHint}>データを取得中です。しばらくお待ちください。</div>
         )}
       </div>
     </div>
