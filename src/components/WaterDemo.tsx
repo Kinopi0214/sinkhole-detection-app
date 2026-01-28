@@ -46,8 +46,8 @@ export default function WaterDemo() {
   // ばらつき（小さめ推奨）
   const jitter = numEnv("NEXT_PUBLIC_WATER_JITTER", 1.5);
 
-  const warnDiff = numEnv("NEXT_PUBLIC_RISK_WARN_DIFF", 3);
-  const dangerDiff = numEnv("NEXT_PUBLIC_RISK_DANGER_DIFF", 8);
+  const warnDiff = numEnv("NEXT_PUBLIC_RISK_WARN_DIFF", 2);
+  const dangerDiff = numEnv("NEXT_PUBLIC_RISK_DANGER_DIFF", 5);
 
   const maxRows = 300;
 
