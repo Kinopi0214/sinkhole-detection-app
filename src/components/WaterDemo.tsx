@@ -7,12 +7,12 @@ import { MockWaterProvider } from "@/lib/providers/mockWaterProvider";
 import { calcDiff, judgeRisk, type RiskLevel, type WaterReading } from "@/lib/water";
 
 type Row = WaterReading & {
-  diff: number;
+  diff: number; // L/min
   risk: RiskLevel;
 };
 
 type RowWithTotal = Row & {
-  totalDiffLmin: number; // 差分(L/min)を単純加算した累積
+  totalDiffL: number; // ✅ 差分総量（L）＝差分(L/min)を時間積分した累積
 };
 
 function numEnv(key: string, fallback: number) {
@@ -38,6 +38,10 @@ export default function WaterDemo() {
   const jitter = numEnv("NEXT_PUBLIC_WATER_JITTER", 3);
 
   const maxRows = 300;
+
+  // ✅ 1ステップ分の体積換算係数
+  // diff(L/min) × (intervalMs/60000) = L
+  const stepMinutes = intervalMs / 60000;
 
   const provider = useMemo(
     () => new MockWaterProvider(upstreamBase, downstreamBase, jitter),
@@ -88,14 +92,14 @@ export default function WaterDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, intervalMs]);
 
-  // 差分(L/min)を単純累積
+  // ✅ 差分総量（L）を計算：diff(L/min) を intervalMs 分だけ積分して累積
   const rowsWithTotalDiff: RowWithTotal[] = useMemo(() => {
-    let acc = 0;
+    let accL = 0;
     return rows.map((cur) => {
-      acc += cur.diff;
-      return { ...cur, totalDiffLmin: acc };
+      accL += cur.diff * stepMinutes;
+      return { ...cur, totalDiffL: accL };
     });
-  }, [rows]);
+  }, [rows, stepMinutes]);
 
   const latest = rowsWithTotalDiff.length
     ? rowsWithTotalDiff[rowsWithTotalDiff.length - 1]
@@ -134,8 +138,8 @@ export default function WaterDemo() {
           </div>
 
           <div className={styles.kpiCard}>
-            <div className={styles.kpiLabel}>差分の総量（L/min）</div>
-            <div className={styles.kpiValue}>{latest ? latest.totalDiffLmin.toFixed(2) : "--"}</div>
+            <div className={styles.kpiLabel}>差分の総量（L）</div>
+            <div className={styles.kpiValue}>{latest ? latest.totalDiffL.toFixed(2) : "--"}</div>
           </div>
 
           <div className={`${styles.kpiCard} ${styles[`kpiTone_${latestTone}`]}`}>
@@ -168,7 +172,6 @@ export default function WaterDemo() {
 
       {/* 下部：テーブル */}
       <div className={styles.panel}>
-        {/* ここは既存のexcel CSSが効く前提（あなたのglobals.cssにあるはず） */}
         <div className="excel-wrap">
           <table className="excel-table">
             <thead>
@@ -176,7 +179,7 @@ export default function WaterDemo() {
                 <th>上流（L/min）</th>
                 <th>下流（L/min）</th>
                 <th>差分（L/min）</th>
-                <th>差分の総量（L/min）</th>
+                <th>差分の総量（L）</th>
                 <th>判定</th>
                 <th>更新日時</th>
               </tr>
@@ -194,7 +197,10 @@ export default function WaterDemo() {
                     <td>{r.upstream.toFixed(2)}</td>
                     <td>{r.downstream.toFixed(2)}</td>
                     <td>{r.diff.toFixed(2)}</td>
-                    <td>{r.totalDiffLmin.toFixed(2)}</td>
+
+                    {/* ✅ 体積（L） */}
+                    <td>{r.totalDiffL.toFixed(2)}</td>
+
                     <td>
                       <span className={`${styles.badge} ${styles[`badge_${tone}`]}`}>
                         {riskLabel(r.risk)}
@@ -206,6 +212,11 @@ export default function WaterDemo() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* 参考：計算の前提を小さく表示（発表で突っ込まれた時の保険） */}
+        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+          ※差分の総量（L）は、差分（L/min）を更新間隔（{intervalMs}ms）で積分して累積しています。
         </div>
       </div>
     </div>
