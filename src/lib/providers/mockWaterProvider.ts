@@ -8,16 +8,17 @@ function clamp(n: number, min: number, max: number) {
 /**
  * 発表用の「見せ方」を作れる疑似水量生成
  *
- * シナリオ（デフォルト）:
+ * シナリオ:
  *  - 最初の equalRows 回は downstream = upstream（差分0で正常を見せる）
- *  - 次の rampRows 回は downstream を少しずつ下げていき差分を増やす（注意→危険の流れ）
- *  - それ以降は従来の「ほぼ正常、たまに注意、まれに危険」のランダム挙動
+ *    ※equalRowsは未指定ならアクセスごとに2 or 3をランダム（→3行目or4行目から差分）
+ *  - 次の rampRows 回は downstream を少しずつ下げていき差分を増やす
+ *  - それ以降はランダム挙動（必要ならOFFにもできる）
  */
 export class MockWaterProvider {
   private upstream: number;
   private downstream: number;
 
-  // 従来の異常状態の持続カウンタ（ランダム用）
+  // ランダム異常用
   private anomalyCount = 0;
   private anomalyType: "warn" | "danger" | null = null;
 
@@ -25,7 +26,7 @@ export class MockWaterProvider {
   private tick = 0;
   private equalRows: number;
   private rampRows: number;
-  private rampStep: number; // 1ステップでどれだけ下流を下げるか（L/min）
+  private rampStep: number; // 1行ごとに下流を下げる量（L/min）
 
   constructor(
     private upstreamBase: number,
@@ -33,36 +34,45 @@ export class MockWaterProvider {
     private jitter: number,
     opts?: {
       equalRows?: number; // 最初に差分0を何行出すか
-      rampRows?: number;  // その後に差分を増やすフェーズを何行続けるか
-      rampStep?: number;  // 1行ごとに下流をどれだけ下げるか（L/min）
+      rampRows?: number;  // 差分を増やすフェーズ行数
+      rampStep?: number;  // 1行ごとの下流低下量（L/min）
+      equalRowsProb3?: number; // 3行目から差分にする確率（equalRows=2）
     }
   ) {
     this.upstream = upstreamBase;
     this.downstream = downstreamBase;
 
-    // ✅ 発表向けデフォルト
-    this.equalRows = opts?.equalRows ?? 4;   // 3〜4行にしたいならここを 3 にしてもOK
-    this.rampRows = opts?.rampRows ?? 10;    // 差分が増える“演出”の長さ
-    this.rampStep = opts?.rampStep ?? 0.9;   // 0.5〜1.5くらいが見やすい
+    // ✅ ここが今回のポイント：アクセスごとに 3行目 or 4行目 から差分が出る
+    // equalRows=2 -> 3行目から差分
+    // equalRows=3 -> 4行目から差分
+    const p3 = opts?.equalRowsProb3 ?? 0.5; // 3行目から差分にする確率
+    const randomEqualRows = Math.random() < p3 ? 2 : 3;
+
+    this.equalRows = opts?.equalRows ?? randomEqualRows;
+
+    // ✅ 発表向けデフォルト（必要に応じて調整）
+    this.rampRows = opts?.rampRows ?? 10;
+
+    // ✅ ばらつきを抑えたい場合はここを小さめに（例: 0.4〜0.8）
+    this.rampStep = opts?.rampStep ?? 0.8;
   }
 
   next(): WaterReading {
     this.tick++;
 
-    /* ===== 1. 上流は安定して揺れる ===== */
-    const pullU = (this.upstreamBase - this.upstream) * 0.05;
-    const stepU = (Math.random() - 0.5) * this.jitter;
+    /* ===== 1. 上流は安定して揺れる（ここを抑えると全体が滑らかになる） ===== */
+    const pullU = (this.upstreamBase - this.upstream) * 0.06; // 復元の強さ（大きいほどベースに戻る）
+    const stepU = (Math.random() - 0.5) * this.jitter;        // ランダム揺れ（jitterが効く）
     this.upstream += pullU + stepU;
-
-    // 範囲制限（上流）
     this.upstream = clamp(this.upstream, 0, 9999);
 
     /* ===== 2. 発表用シナリオフェーズ ===== */
+
     // (A) 最初は下流=上流（差分0）
     if (this.tick <= this.equalRows) {
       this.anomalyType = null;
       this.anomalyCount = 0;
-      this.downstream = this.upstream; // ✅ 完全一致
+      this.downstream = this.upstream; // 完全一致
       return {
         upstream: this.upstream,
         downstream: this.downstream,
@@ -70,15 +80,16 @@ export class MockWaterProvider {
       };
     }
 
-    // (B) 次は徐々に下流を下げて差分を作る（見せ場）
+    // (B) 徐々に下流を下げて差分を作る（見せ場）
     const rampEnd = this.equalRows + this.rampRows;
     if (this.tick <= rampEnd) {
       this.anomalyType = null;
       this.anomalyCount = 0;
 
       const k = this.tick - this.equalRows; // 1,2,3...
-      // downstream = upstream - (k * rampStep) （必要なら微小ノイズを足してもいい）
-      this.downstream = this.upstream - k * this.rampStep;
+      // downstream = upstream - (k * rampStep) + 小さいノイズ（自然さだけ少し）
+      const tinyNoise = (Math.random() - 0.5) * (this.jitter * 0.15); // 小さめ
+      this.downstream = this.upstream - k * this.rampStep + tinyNoise;
 
       this.downstream = clamp(this.downstream, 0, 9999);
       return {
@@ -88,28 +99,32 @@ export class MockWaterProvider {
       };
     }
 
-    /* ===== 3. それ以降は従来通り（ランダム） ===== */
+    /* ===== 3. それ以降（ランダム挙動） =====
+       発表で「差が大きくなりすぎる」のが嫌なら、
+       下の確率(0.02/0.12)を下げる or 係数を小さくしてください。
+    */
     if (this.anomalyCount > 0) {
       this.anomalyCount--;
       if (this.anomalyCount === 0) this.anomalyType = null;
     } else {
       const r = Math.random();
-      if (r < 0.02) {
+      if (r < 0.01) {
         this.anomalyType = "danger";
-        this.anomalyCount = 3 + Math.floor(Math.random() * 3); // 3〜5回
-      } else if (r < 0.12) {
+        this.anomalyCount = 3;
+      } else if (r < 0.06) {
         this.anomalyType = "warn";
-        this.anomalyCount = 2 + Math.floor(Math.random() * 3); // 2〜4回
+        this.anomalyCount = 2;
       } else {
         this.anomalyType = null;
       }
     }
 
-    const pullD = (this.downstreamBase - this.downstream) * 0.05;
+    const pullD = (this.downstreamBase - this.downstream) * 0.06;
     let stepD = (Math.random() - 0.5) * this.jitter;
 
-    if (this.anomalyType === "warn") stepD -= this.jitter * 0.8;
-    if (this.anomalyType === "danger") stepD -= this.jitter * 2.0;
+    // ✅ ばらつきを抑えたいので “引き下げ量” を控えめに
+    if (this.anomalyType === "warn") stepD -= this.jitter * 0.5;
+    if (this.anomalyType === "danger") stepD -= this.jitter * 1.2;
 
     this.downstream += pullD + stepD;
     this.downstream = clamp(this.downstream, 0, 9999);

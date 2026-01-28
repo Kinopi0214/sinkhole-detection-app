@@ -40,22 +40,26 @@ export default function WaterDemo() {
   const downstreamBase = numEnv("NEXT_PUBLIC_DOWNSTREAM_BASE", 117);
   const warnDiff = numEnv("NEXT_PUBLIC_RISK_WARN_DIFF", 3);
   const dangerDiff = numEnv("NEXT_PUBLIC_RISK_DANGER_DIFF", 8);
-  const jitter = numEnv("NEXT_PUBLIC_WATER_JITTER", 3);
+  const jitter = numEnv("NEXT_PUBLIC_WATER_JITTER", 2); // ✅ ばらつき小さめ推奨（例：2 or 1.5）
 
   const maxRows = 300;
 
   // 体積換算：diff(L/min) × (intervalMs/60000) = L
   const stepMinutes = intervalMs / 60000;
 
-  // ✅ 発表用シナリオ設定（ここを変えるだけで演出調整できます）
-  const demoEqualRows = 4;  // 最初の「差分0」行数（3にしたければ 3）
-  const demoRampRows = 10;  // 差分を増やすフェーズ行数
-  const demoRampStep = 0.9; // 1行ごとの下流低下量（L/min）
+  // ✅ 発表用演出の調整（ここが触りどころ）
+  const demoRampRows = 10;   // 差分を増やすフェーズ行数
+  const demoRampStep = 0.8;  // 1行ごとの下流低下量（小さめ推奨）
+
+  // ✅ 「3行目から差分」になる確率（equalRows=2）
+  // 0.5なら半々。例えば0.7なら「3行目から差分」が多くなる。
+  const probStartDiffAt3rd = 0.5;
 
   const provider = useMemo(
     () =>
       new MockWaterProvider(upstreamBase, downstreamBase, jitter, {
-        equalRows: demoEqualRows,
+        // equalRowsは未指定にして provider側で 2/3 をランダムに決定
+        equalRowsProb3: probStartDiffAt3rd,
         rampRows: demoRampRows,
         rampStep: demoRampStep,
       }),
@@ -72,7 +76,7 @@ export default function WaterDemo() {
 
   const [running, setRunning] = useState(true);
 
-  // ✅ 初期は空（0から開始）
+  // 初期は空（0から開始）
   const [rows, setRows] = useState<Row[]>([]);
 
   const appendOne = () => {
