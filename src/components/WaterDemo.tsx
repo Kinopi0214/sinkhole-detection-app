@@ -12,13 +12,21 @@ type Row = WaterReading & {
 };
 
 type RowWithTotal = Row & {
-  totalDiffL: number; // ✅ 差分総量（L）＝差分(L/min)を時間積分した累積
+  totalDiffL: number; // 差分総量（L）＝差分(L/min)を時間積分した累積
 };
 
 function numEnv(key: string, fallback: number) {
   const v = process.env[key];
   const n = v ? Number(v) : NaN;
   return Number.isFinite(n) ? n : fallback;
+}
+
+function formatInterval(intervalMs: number) {
+  // 10000ms -> 10s のように表示したい
+  // 端数が出る可能性もあるので、必要なら小数も許容
+  const s = intervalMs / 1000;
+  const text = Number.isInteger(s) ? `${s}s` : `${s.toFixed(1)}s`;
+  return text;
 }
 
 function riskLabel(risk: RiskLevel) {
@@ -39,8 +47,7 @@ export default function WaterDemo() {
 
   const maxRows = 300;
 
-  // ✅ 1ステップ分の体積換算係数
-  // diff(L/min) × (intervalMs/60000) = L
+  // 1ステップ分の体積換算係数：diff(L/min) × (intervalMs/60000) = L
   const stepMinutes = intervalMs / 60000;
 
   const provider = useMemo(
@@ -59,12 +66,8 @@ export default function WaterDemo() {
 
   const [running, setRunning] = useState(true);
 
-  const [rows, setRows] = useState<Row[]>(() => {
-    const first = provider.next();
-    const diff = calcDiff(first);
-    const risk = judgeRisk(diff, warnDiff, dangerDiff);
-    return [{ ...first, diff, risk }];
-  });
+  // ✅ 初期は空（0から開始）
+  const [rows, setRows] = useState<Row[]>([]);
 
   const appendOne = () => {
     const r = provider.next();
@@ -107,6 +110,8 @@ export default function WaterDemo() {
 
   const latestTone = latest ? riskTone(latest.risk) : "neutral";
 
+  const noteText = `※差分の総量（L）は、差分（L/min）を更新間隔（${intervalMs}ms）で積分して累積しています。`;
+
   return (
     <div className={styles.page}>
       {/* 上部：カード領域 */}
@@ -114,9 +119,9 @@ export default function WaterDemo() {
         <div className={styles.header}>
           <div>
             <div className={styles.title}>疑似リアルタイム水量デモ（履歴）</div>
-            <div className={styles.sub}>
-              更新間隔: {intervalMs}ms ／ 閾値: 注意 ≥ {warnDiff} ／ 危険 ≥ {dangerDiff}
-            </div>
+
+            {/* ✅ 閾値の表示を削除し、ms→s表示 */}
+            <div className={styles.sub}>更新間隔: {formatInterval(intervalMs)}</div>
           </div>
           <div className={styles.now}>現在時刻：{new Date(now).toLocaleString("ja-JP")}</div>
         </div>
@@ -155,23 +160,28 @@ export default function WaterDemo() {
           </div>
         </div>
 
+        {/* ✅ ボタン：1回取得を削除、クリアを「0から開始」に */}
         <div className={styles.controls}>
-          <button className={styles.btn} onClick={appendOne}>
-            1回取得
-          </button>
-
           <button className={styles.btn} onClick={() => setRunning((v) => !v)}>
             {running ? "停止" : "再開"}
           </button>
 
-          <button className={styles.btn} onClick={() => setRows((prev) => prev.slice(-1))}>
-            クリア（最新のみ）
+          <button
+            className={styles.btn}
+            onClick={() => {
+              setRows([]); // ✅ 0から
+            }}
+          >
+            クリア
           </button>
         </div>
       </div>
 
       {/* 下部：テーブル */}
       <div className={styles.panel}>
+        {/* ✅ 注釈を表の上部に移動 */}
+        <div className={styles.tableNote}>{noteText}</div>
+
         <div className="excel-wrap">
           <table className="excel-table">
             <thead>
@@ -197,10 +207,7 @@ export default function WaterDemo() {
                     <td>{r.upstream.toFixed(2)}</td>
                     <td>{r.downstream.toFixed(2)}</td>
                     <td>{r.diff.toFixed(2)}</td>
-
-                    {/* ✅ 体積（L） */}
                     <td>{r.totalDiffL.toFixed(2)}</td>
-
                     <td>
                       <span className={`${styles.badge} ${styles[`badge_${tone}`]}`}>
                         {riskLabel(r.risk)}
@@ -214,10 +221,10 @@ export default function WaterDemo() {
           </table>
         </div>
 
-        {/* 参考：計算の前提を小さく表示（発表で突っ込まれた時の保険） */}
-        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-          ※差分の総量（L）は、差分（L/min）を更新間隔（{intervalMs}ms）で積分して累積しています。
-        </div>
+        {/* 0件のときの案内（見栄え用） */}
+        {rowsWithTotalDiff.length === 0 && (
+          <div className={styles.emptyHint}>まだデータがありません。再開するとデータが流れます。</div>
+        )}
       </div>
     </div>
   );
